@@ -1,0 +1,275 @@
+# base.yaml — 공통 기본값 (모든 파라미터 외부화: 하드코딩 금지 원칙)
+# 단위: 비용 [원], 출력 [MW], 에너지 [MWh], 요금 [원/MWh]
+scenario_name: "CIRED base"
+description: "PV-ESS-CHP-TES-DHN 통합 다중에너지 계획 (공통 기본값)"
+
+seed: 42                       # Monte Carlo 재현성
+
+# ── 계획 전략 ──────────────────────────────────────────
+# 경제 지표 상세·출처: scenarios/equipment/economic.yaml 참조
+planning:
+  mode: stochastic             # deterministic | stochastic
+  horizon_years: 15            # 계획기간 [년]
+  discount_rate: 0.045         # [-/년] 실질 할인율 → NPV 환산
+                               # 운영비·O&M은 연금현가계수 PVIFA(r,N)로 할인 합산
+                               #   PVIFA = (1-(1+r)^-N)/r; r=0 이면 비할인(=N)
+                               # [출처: KDI 예비타당성조사 사회적 할인율 4.5% (2017~)]
+                               # [참고: 민간 WACC 적용 시 5~7% — 민감도 분석 권장]
+  alpha: 0.95                  # CVaR 신뢰수준
+  lambda_risk: 0.5             # 리스크 가중치
+
+# ── 자원 on/off ────────────────────────────────────────
+components:
+  pv: true
+  ess: true
+  chp: true
+  tes: true
+  boiler: true
+  dhn: true
+
+# ── 시나리오 생성 ──────────────────────────────────────
+scenarios:
+  type: representative_24      # representative_24 | monte_carlo
+  n_scenarios: 100             # monte_carlo 일 때만 사용
+
+# ── 열-전 결합 ─────────────────────────────────────────
+# [가정] 노드별 열수요 크기 = 전기부하 × ratio.
+#   IEEE 33-bus는 전기부하만 제공 → 열수요 크기를 직접 산정 불가.
+#   주거·상업 혼합 배전구역의 전기:열 동시수요 비율을 0.8로 가정(stylized).
+#   ※ 열수요의 '시간대별 형상'은 한국지역난방공사 실측(khc_heat_2022.csv)에서 도출.
+#   상세 출처·한계: docs/ASSUMPTIONS.md
+heat:
+  ratio: 0.8                   # [-] 열부하 = 전기부하 × ratio
+
+# ── PV ────────────────────────────────────────────────
+# 기술 스펙 상세: scenarios/equipment/pv.yaml 참조
+pv:
+  technology: "mono_si_perc"   # 단결정 PERC (스펙: scenarios/equipment/pv.yaml)
+  cap_min_mwp: 0.1             # 노드당 최소 설치 [MWp]
+  cap_max_mwp: 1.0             # 노드당 최대 설치 [MWp]
+  target_mwp: 3.3              # 총 PV 보급량(고정) [MWp]. 노드 배치만 최적화.
+                               #   ≈ 피크부하(3.715MW)의 약 89% (고침투 시나리오)
+                               #   penetration 민감도: 2.2/3.3/4.4/5.6 MWp
+  no_curtailment: false        # true=출력제한 불가
+  pf_min: 0.95                 # 인버터 최소 역률 (IEEE 1547-2018 기준)
+                               # → |Q| ≤ S × tan(arccos(0.95)) ≈ 0.329 × S [Mvar]
+
+  # ── 성능 저하 ─────────────────────────────────
+  degradation_rate: 0.005      # [-/년] 연간 출력 저하율 (NREL Jordan & Kurtz, LID 포함)
+                               # 계획기간 평균 유효계수: deg_factor = (1-(1-d)^N)/(N·d)
+                               # N=15, d=0.005 → deg_factor ≈ 0.964
+
+  # ── 성능 비율 참고값 (★ 제약식 미적용: pv_profile이 실측 AC 기반) ─────────
+  performance_ratio: 0.86      # [-] 인버터+배선+오염+음영 합산 (IEA PVPS T13-20, 한국 옥상형)
+
+  cost:
+    c_power: 1000000000        # [원/MWp] 용량 비례 CAPEX
+                               # = 모듈(350) + 인버터(90) + BOS(280) + EPC(200) + 연계(80)
+                               # 출처: 산업통상자원부 신재생에너지 보급사업 기준단가 (2025, 100kW~1MW)
+    c_fixed: 50000000          # [원/site] 사이트 고정비 (인허가·측량 등)
+    om_rate: 0.015             # [-/년] 연간 O&M 비율 (capex 대비, 보수적 적용)
+
+# ── ESS ───────────────────────────────────────────────
+# 기술 스펙 상세: scenarios/equipment/ess.yaml 참조
+ess:
+  technology: "LFP"            # LiFePO4 리튬인산철 (스펙: scenarios/equipment/ess.yaml)
+  # ESS 설치 후보 노드 (0-indexed) — 피크부하 ≥100kW 주요 수요노드로 한정.
+  #   근거: 피크저감(기본요금)·전압지지 가치가 대형 부하노드에 집중. 실제로 배전
+  #   전 노드에 ESS를 깔지 않음. 32→11노드로 siting 조합 축소 → MILP 수렴성↑.
+  #   [참고] null 또는 미설정 시 전 노드(32개). 후보 확장/축소는 민감도 대상.
+  candidate_nodes: [1, 3, 6, 7, 13, 23, 24, 28, 29, 30, 31]
+  cap_max_mw: 1.5              # [MW] 노드별 ESS 출력 상한 (big-M 타이트닝 + 현실성)
+                               # 3.7MW 피더 노드(부하 0.1~0.4MW)에 3.0MW는 비현실 → 1.5로 축소.
+                               # big-M 축소로 LP 완화 강화. 미설정 시 pv_to_ess_ratio 폴백.
+  pv_to_ess_ratio: 3.0         # (폴백) cap_max_mw 미설정 시 노드 상한 = cap_max_mwp × ratio
+  min_duration_h: 2.0          # 최소 지속시간 [h] [가정: 배전급 FR·피크저감 최소 요건]
+  max_duration_h: 4.0          # 최대 지속시간 [h] [가정: 배전급 경제적 상한]
+  min_power_mw: 0.1            # 최소 설치 출력 [MW] [가정: 배전계통 최소 연계 용량]
+
+  efficiency: 0.95             # 단방향 충·방전 효율 [-]
+                               # [출처: CATL LFP CTP 3.0; BYD Blade LFP — 왕복 효율 ~90.3%]
+                               # [참고: η_one_way = √(η_RT) = √0.925 ≈ 0.962 (시장 대표);
+                               #        0.95² = 0.9025 (보수적 모델 채택값)]
+                               # [출처: NREL "Grid-Scale Battery Storage FAQ" (2023)]
+
+  soc_min: 0.10                # SOC 하한 [-]
+                               # [출처: 한국전력공사 ESS FR 운영 기준 (2024)]
+                               # [출처: NREL "Best Practices PV+ESS O&M" (2023)]
+  soc_max: 0.90                # SOC 상한 [-] (장기 만충 시 달력 노화 가속 방지)
+                               # [출처: 위와 동일]
+
+  pf_min: 0.95                 # 인버터 최소 역률 [-]
+                               # [출처: IEEE Std 1547-2018 § 8.3.4]
+                               # [출처: 한국전력공사 배전계통 연계 기술기준 (2024)]
+
+  # ── 수명 참고 (모델 직접 미반영) ─────────────────
+  cycle_life: 3000             # 보수적 사이클 수명 [회 @80%DoD, EOL=80%]
+                               # [출처: IEC 62619:2022 LFP 최소 사이클 수명 기준]
+                               # [참고: CATL LFP: 4,000회 보증; c_deg 계산 기준으로 사용]
+  calendar_life_years: 15      # 달력 수명 [년]
+                               # [출처: NREL "Grid-Scale Battery Storage FAQ" (2023)]
+
+  cost:
+    c_power: 150000000         # [원/MW] PCS + 연계공사비
+                               # [출처: ABB/Sungrow PCS 국내 공급가 + 한전 연계공사비 (2024)]
+    c_energy: 200000000        # [원/MWh] 배터리팩 + BMS/EMS + 설치비
+                               # [출처: 한국전력공사 ESS FR 낙찰 단가 (2022~2023): ~278만원/kWh 근사]
+                               # [출처: BloombergNEF 2024: $180~220/kWh ≈ 243~297만원/kWh 범위 내]
+    c_fixed: 30000000          # [원/site] 사이트 고정비 (인허가·부지 준비)
+                               # [출처: 한국에너지공단 소규모 ESS 인허가 비용 실태 (2023)]
+    om_rate: 0.025             # [-/년] 연간 O&M 비율 (CAPEX 대비)
+                               # [출처: NREL "Grid-Scale Battery Storage FAQ" (2023): 1.5~2.5%/yr]
+                               # [출처: 한국에너지공단 ESS 운영 실태조사 (2023): 국내 2~3%]
+    c_deg_per_mwh: 33333       # [원/MWh throughput] 사이클 노화 단가
+                               # = c_energy / (2 × cycle_life) = 200M / (2×3,000) = 33,333
+                               # [출처: Hesse et al. Energies 10(7), 2017 — 사이클 단가 모델]
+                               # [참고: cycle_life=4,000 기준 시 25,000원/MWh (낙관적 추정)]
+
+# ── CHP ───────────────────────────────────────────────
+# 기술 스펙 상세·출처: scenarios/equipment/chp.yaml 참조
+# 출처: 덴마크 에너지청(DEA) Technology Catalogue 2025 "06 Gas engines, natural gas"
+#   2030 ctrl 값. 비용 py2020 EUR → ×1,400 원/EUR (물가 미보정).
+chp:
+  technology: "gas_engine"     # 천연가스 엔진 CHP (스펙: scenarios/equipment/chp.yaml)
+  eta_elec: 0.47               # 전기효율 (net, annual avg, 2030)
+                               # [주의] 소형기(≤1MW_e)는 0.43~0.45 수준 — 민감도 1순위
+  eta_heat: 0.475              # 열효율 = η_e/Cb (Cb=0.99) → 열전비 α≈1.01
+  p_max_mw: 1.0                # 노드당 최대 전기출력 [MW_e] (가정)
+  cost:
+    c_power: 1340000000        # [원/MW_e] (0.957 M€/MW_e ×1400; 물가 미보정)
+    c_fixed: 20000000          # [원/site] (가정 — 카탈로그 미제공; 민감도 보강 권장)
+    om_rate: 0.010             # 고정 O&M 9,889 €/MW/y ÷ capex ≈ 1.0%/년
+
+# ── 가스보일러 ─────────────────────────────────────────
+# 기술 스펙 상세·출처: scenarios/equipment/chp.yaml (boiler 섹션) 참조
+# 출처: 덴마크 에너지청 Technology Catalogue 2025 "44 Natural Gas DH Only" (2030 ctrl)
+boiler:
+  eta: 1.04                    # 열효율 (net, annual avg; LHV 기준 응축식 → >1)
+                               # [주의] 환수온도 ≥60°C 구간 응축 제한 → 실효율 0.95~1.0 가능
+  p_max_mw: 2.0                # [MW_th] (가정)
+  cost:
+    c_power: 74400000          # [원/MW_th] (0.0532 M€/MW_th ×1400; 물가 미보정)
+    om_rate: 0.038             # 고정 O&M 2,020 €/MW/y ÷ capex ≈ 3.8%/년
+
+# ── TES (열저장) ──────────────────────────────────────
+# 기술 스펙 상세·출처: scenarios/equipment/chp.yaml (tes 섹션) 참조
+# 출처: 덴마크 에너지청 Energy Storage Catalogue 2025 "141 Large hot water tank"(steel)
+#   비용 py2020 EUR → ×1,400. 대형 DH 축열조 기준 (소규모 노드 적용 시 단가↑ 가능).
+tes:
+  efficiency: 0.99             # √(round-trip 98%) ≈ 0.99 [소형 적용 시 0.975 보수 검토]
+  soc_min: 0.10                # (가정)
+  soc_max: 0.90                # (가정)
+  min_duration_h: 2.0          # (가정)
+  max_duration_h: 6.0          # (가정)
+  cost:
+    c_energy: 4250000          # [원/MWh_th] (3,036 €/MWh ×1400; 물가 미보정)
+    om_rate: 0.003             # 고정 O&M 8.8 €/MWh/y ÷ capex ≈ 0.3%/년
+
+# ── DHN (지역난방망) ──────────────────────────────────
+# 기술 스펙 상세·출처: scenarios/equipment/dhn.yaml 참조
+# [stylized overlay] IEEE 33-bus에는 대응 열배관망이 없어 토폴로지는 합성(가정).
+#   배관 연결·길이(network.py DHN_PIPE_DATA)는 CHP 6노드 방사형 가정.
+#   온도는 KDHC 설계 전형값, 배관 단가·열손실·수명은 덴마크 에너지청(DEA)
+#   Transport of Energy 카탈로그 "3.2 DH_Distribu Suburb"(2030) 기준.
+#   상세 출처·한계: docs/ASSUMPTIONS.md
+dhn:
+  cp: 4.182                    # [kJ/(kg·°C)] 물 비열 (물리상수)
+  m_dot_base: 10.0             # [kg/s] 배관 설계 질량유량 (가정; 배관 용량 산정 기준)
+  t_amb: 10.0                  # [°C] 연평균 외기 (기상청 전형값)
+  t_sup_min: 70.0              # [°C] 공급온도 하한
+  t_sup_max: 120.0             # [°C] 공급온도 상한 (KDHC 중온수 지역난방 ~115-120°C)
+  t_ret_min: 40.0              # [°C] 환수온도 하한
+  t_ret_max: 60.0              # [°C] 환수온도 상한 (KDHC 환수 ~40-65°C)
+  temp_loss_per_km: 0.02       # [/km] 무차원 손실률 (stylized; DEA 배전 DH 망손실 ~12.4%에 정합)
+  min_temp_diff: 10.0          # [°C] 최소 공급-환수 온도차 (열교환 성능 확보)
+  cost:
+    # DEA Transport 2025 "3.2 DH_Distribu Suburb", single line 1–5MW, 2030:
+    #   818.9 €/m → ×1000 ×1,400원/€ ≈ 1.146e9 원/km (노선단위 = 공급+환수 포함).
+    #   수명 45년, 고정 O&M ~1,000 €/MW/년.
+    c_pipe: 1146000000         # [원/km] 노선 단위길이당 건설비 (공급+환수 포함)
+    om_rate: 0.015             # O&M (capex 대비 비율 근사; DEA 고정 O&M 1,000€/MW/y)
+
+# ── 시장 ──────────────────────────────────────────────
+# 경제·시장 지표 상세·출처: scenarios/equipment/economic.yaml 참조
+market:
+  rec_price: 70000             # [원/MWh] REC 가중 수익 단가
+                               # [출처: 신재생에너지 공급인증서 거래시장 현물 평균 (2024~2025)]
+  gas_price: 80000             # [원/MWh] 천연가스 열량단가 (CHP·보일러 공통)
+                               # [출처: 한국가스공사 도시가스 도매요금 (2025, 산업/열병합)]
+  carbon_price: 0.0            # [원/tCO2] 탄소가격 (K-ETS). 기본 0 = 미반영(기존 결과 불변)
+                               #   미래 시나리오(future_pathway)에서 override 해 탈탄소 압력 반영
+                               #   [출처: K-ETS 현물 ~9천원(2025); IPCC AR6 2030 $50~100/tCO2 경로]
+  gas_emission_factor: 0.20    # [tCO2/MWh] 천연가스 연소 배출계수 (LHV 기준 근사)
+                               #   [출처: IPCC 2006 GL — 천연가스 연소 ~0.20 tCO2/MWh_th]
+  demand_charge: 8320          # [원/kW/월] 기본요금(수요요금) — 피크 수전 기반
+                               # 비용 = demand_charge × p_peak × 12개월 × PVIFA(할인)
+                               # ESS 피크저감의 핵심 가치원 (한국 ESS 경제성 1순위)
+                               # [출처: 한전 일반용(을)/산업용(을) 고압A 선택II 기본요금 전형값]
+                               # [참고: 0으로 두면 수요요금 미반영. 민감도 분석 대상]
+  fr_enabled: true             # 주파수조정(FR) 보조서비스 수익 포함 여부
+  fr_cap_price: 8500           # [원/MW/h] KPX FR 예비력 용량요금 (전형값)
+                               # [출처: KPX 보조서비스 정산 공시 (2024); 8,000~10,000 범위]
+  fr_util_factor: 0.25         # [-] FR 발동(regulation mileage) 계수
+                               # 시간당 발동 throughput = fr_util_factor × (상향+하향) 예비력
+                               # → 발동 처리량에 사이클 열화비용(c_deg) 부과 (FR 발동비용 모델링)
+                               # 손익분기: c_deg×μ = 33,333×0.25 = 8,333 ≈ fr_cap_price 8,500
+                               # [근거: FR은 고빈도 충방전 서비스 — mileage 0.2~0.3/h 전형]
+                               # [참고: μ↑이면 발동비용↑ → FR 매력↓; 민감도 분석 대상]
+  fr_total_cap_mw: 2.0         # [MW] 시스템 전체 FR 조달 상한 (방향별: 상향·하향 각각)
+                               # Σ_n r_fr_up[s,t] ≤ 상한,  Σ_n r_fr_dn[s,t] ≤ 상한  ∀s,t
+                               # 분산형 마이크로그리드가 시장에서 낙찰받을 수 있는 FR 깊이 제약.
+                               # [가정/stylized] 피더 피크(3.7MW)의 ~절반. 단일 자원의 시장
+                               #   조달량은 유한 — 미설정 시 'ESS 최대'로 부풀던 비현실 해 차단.
+                               # [참고: 민감도 분석 대상. null 로 두면 상한 미적용]
+
+# ── 전기요금 (TOU) ─────────────────────────────────────
+# 한전 시간대별 차등요금(Time-of-Use). scenario_gen.py 가 config 에서 읽어 사용.
+# 출처: 한국전력공사 전기요금표 (2025.04.01 기준), 산업용 시간대별 요금 구조
+#   상세·출처: scenarios/equipment/economic.yaml (tariff 섹션)
+tariff:
+  import:                      # 수전(구매) 단가 [원/kWh]
+    summer:      {off: 95.7,  mid: 121.5, peak: 155.0}   # 여름(6~8월)
+    spring_fall: {off: 95.7,  mid: 100.5, peak: 119.7}   # 봄·가을(3~5,9~10월)
+    winter:      {off: 103.1, mid: 120.0, peak: 149.4}   # 겨울(11~2월)
+  export:                      # 수출(판매/SMP 대용) 단가 [원/kWh]
+    summer:      {off: 58.0, mid: 83.0, peak: 102.0}
+    spring_fall: {off: 55.0, mid: 76.0, peak:  92.0}
+    winter:      {off: 62.0, mid: 85.0, peak: 105.0}
+  # 시간대(0~23시) → 부하구간 패턴 (off/mid/peak)
+  tou_pattern: [off, off, off, off, off, off, off, off, off,
+                mid, peak, peak, mid, peak, peak, peak, peak, mid,
+                mid, mid, mid, mid, mid, off]
+  smp_noise_std: 0.05          # [-] Monte Carlo SMP 스케일 정규분포 σ
+  re_smp_drop_per_10pct: -5.0  # [원/kWh] RE 비중 10%p 증가당 SMP 변화 (민감도용)
+
+# ── 계통 ──────────────────────────────────────────────
+grid:
+  relax_voltage: false         # true=전압 제약 완화(진단용)
+  v_penalty: 10000000000       # [원/pu] 전압 위반 패널티
+  export_limit_mw: null        # [MW] 역송전(수출) 한계 — 기본 무제한(수출 자유).
+                               # ※ 메인 시나리오엔 미적용(null): 적용 시 rep24가 일부
+                               #   극단일에서 binding→미수렴. 고침투 curtailment 연구
+                               #   (pv_penetration_sweep)에서만 override해 사용.
+
+# ── Solver ────────────────────────────────────────────
+solver:
+  name: cplex
+  time_limit: 600              # [s]
+  mip_gap: 0.005
+  verbose: false
+
+# ── 데이터 파일 (data/ 기준) ──────────────────────────
+data_files:
+  pv: "kpx_pv_wind_2024.csv"
+  demand: "kpx_demand_2025.csv"
+  heat: "khc_heat_2022.csv"
+  smp_rec: "annual_smp_rec_re.csv"
+
+# ── 출력 ──────────────────────────────────────────────
+output:
+  save_variable_csvs: true     # 시간별 변수(p_import·p_chp_elec·r_fr_up …)를
+                               # outputs/<시나리오>/results/*.csv 로 저장.
+                               # figures/make_flow_figs.py(시간별 운전 그림·에너지 흐름
+                               # Sankey)가 이 CSV 를 읽는다. false 면 요약(JSON)만
+                               # 남아 사후 분석에서 재풀이가 필요해진다.
+                               # [비용] rep24(S=24) 기준 수십 MB — outputs/ 는 gitignore.

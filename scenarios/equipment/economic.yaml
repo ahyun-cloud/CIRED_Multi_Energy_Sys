@@ -1,0 +1,116 @@
+# ── 경제·시장 지표 정의 ────────────────────────────────────────────────────────
+# 대상: 할인율·계획기간·위험 / 전력시장 가격(TOU·SMP·REC·가스·FR) — 한국(KPX·한전) 기준
+#
+# ★ 본 문서는 출처·근거 참고용이며, 실제 모델 소비 값은 base.yaml 에 있다.
+#   (config_loader 는 equipment/*.yaml 을 로드하지 않음 — base.yaml 이 단일 진실원천)
+#
+# 모델 매핑 (base.yaml → objective.py / scenario_gen.py 소비 키):
+#   planning.{horizon_years, discount_rate, alpha, lambda_risk}
+#   market.{rec_price, gas_price, fr_enabled, fr_cap_price}
+#   tariff.{import, export, tou_pattern, smp_noise_std, re_smp_drop_per_10pct}
+#
+# 상세 가정·한계: docs/ASSUMPTIONS.md §3 참조
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── A. 계획 경제성 (NPV) ───────────────────────────────────────────────────────
+planning:
+  horizon_years: 15
+  # [년] 단일 계획기간 [가정]
+  # [한계] 중간 재투자·기술갱신 없음. 자산수명(PV 25, ESS 15, CHP 25, 배관 45년) 상이.
+
+  discount_rate: 0.045
+  # [-/년] 실질 할인율 → 운영비·O&M 을 NPV 로 환산
+  # [출처: KDI 예비타당성조사 사회적 할인율 4.5% (2017 개정~)]
+  # [참고: 민간 투자 관점 WACC 5~7%; 에너지 인프라 4~6% 범위 — 민감도 분석 권장]
+  # 적용식 (objective.py):
+  #   PVIFA(r,N) = Σ_{t=1}^{N} (1+r)^-t = (1-(1+r)^-N)/r
+  #   운영비 weight = 365 × PVIFA;  O&M 승수 = (1 + om_rate × PVIFA);  capex = t=0 비할인
+  #   r=0.045, N=15 → PVIFA ≈ 10.74 (비할인 N=15 대비 운영비 약 28%↓)
+  #   r=0     → PVIFA = 15 (비할인 합산, 기존 거동과 동일)
+
+  alpha: 0.95
+  # [-] CVaR 신뢰수준 [가정/방법]
+  # [출처: Rockafellar & Uryasev "Optimization of Conditional Value-at-Risk" (2000)]
+
+  lambda_risk: 0.5
+  # [-] 위험회피 가중치 (목적함수 λ·CVaR 항) [가정]
+  # [참고] λ=0 위험중립 ~ λ↑ 위험회피. 0/0.5/1.0 등 민감도로 효율-위험 경계 제시 권장.
+
+# ── B. 시장 가격 ───────────────────────────────────────────────────────────────
+market:
+  rec_price: 70_000
+  # [원/MWh] PV 발전량 REC 가중 수익 단가
+  # [출처: 신재생에너지 공급인증서(REC) 현물시장 가중평균 (2024~2025)]
+  # [참고] REC 가중치·SMP 연동으로 변동. PV 과도 유인 우려 시 적용범위 조정(ASSUMPTIONS §5).
+
+  gas_price: 80_000
+  # [원/MWh(LHV)] 천연가스 열량단가 (CHP·보일러 공통 연료)
+  # [출처: 한국가스공사(KOGAS) 도시가스 도매요금 (2025, 산업용/열병합 환산)]
+  # [참고] 계절·유종 연동 ±15%. SMP 와 동조 변동 → 가스가 민감도 분석 권장.
+
+  demand_charge: 8_320
+  # [원/kW/월] 기본요금(수요요금) — 피크 수전(p_peak) 기반 월 요금
+  # 비용 = demand_charge × p_peak[s] × 12 × PVIFA.  ESS 방전이 피크를 낮춰 절감.
+  # [출처: 한전 일반용(을)·산업용(을) 고압A 선택II 기본요금 전형값 (2024~2025)]
+  # [의의] 한국 ESS 경제성의 1순위 가치원(피크저감). 2016~18 ESS 붐의 핵심 동인.
+  # [가정] 시나리오(대표일)별 피크×12개월 근사 — 월별 청구를 대표일로 환산.
+  # [참고] 0 → 수요요금 미반영. 민감도 분석 핵심 파라미터.
+
+  fr_enabled: true
+  fr_cap_price: 8_500
+  # [원/MW/h] KPX 주파수조정(FR) 예비력 용량요금
+  # [출처: KPX 보조서비스 정산 공시 (2024 상반기); 8,000~10,000 범위]
+  # [참고] ESS 1MW 이상 입찰 가능 (전력시장운영규칙 제5장). 실시간 입찰가 변동.
+
+  fr_util_factor: 0.25
+  # [-] FR 발동(regulation mileage) 계수: 시간당 발동 throughput = μ·(상향+하향)
+  # 발동 throughput 에 사이클 열화비용(c_deg) 부과 → FR 발동비용 모델링.
+  # 순 단가 (c_deg·μ − fr_price) = 33,333×0.25 − 8,500 ≈ −167 원/MW/h (거의 손익분기).
+  # [근거: FR은 고빈도 충방전 — mileage 0.2~0.3/h 전형. μ는 민감도 대상]
+
+  fr_total_cap_mw: 2.0
+  # [MW] 시스템 전체 FR 조달 상한 (상향·하향 방향별): Σ_n r_fr ≤ 상한 ∀s,t
+  # [가정/stylized] 분산형 마이크로그리드의 시장 낙찰 가능 FR 깊이 ≈ 피더 피크의 절반.
+  # 단일 자원의 FR 조달량은 유한 — 미설정 시 ESS가 FR 목적 과대증설되는 비현실 해 발생.
+  # [참고] 민감도 분석 대상. null → 상한 미적용.
+
+# ── C. 전력요금 TOU (한전, 2025.04.01) ─────────────────────────────────────────
+# 출처: 한국전력공사 전기요금표 (2025.04.01 개정), 산업용 시간대별 차등요금 구조
+#   계절구분: 여름(6~8월), 봄·가을(3~5·9~10월), 겨울(11~2월)
+#   부하구분: off(경부하)/mid(중간부하)/peak(최대부하)
+tariff:
+  import:                      # 수전(구매) 단가 [원/kWh]
+    summer:      {off: 95.7,  mid: 121.5, peak: 155.0}
+    spring_fall: {off: 95.7,  mid: 100.5, peak: 119.7}
+    winter:      {off: 103.1, mid: 120.0, peak: 149.4}
+    # [출처: 한전 산업용(을) 고압 시간대별 요금표 (2025.04)]
+
+  export:                      # 수출(판매) 단가 [원/kWh] — SMP 대용 근사
+    summer:      {off: 58.0, mid: 83.0, peak: 102.0}
+    spring_fall: {off: 55.0, mid: 76.0, peak:  92.0}
+    winter:      {off: 62.0, mid: 85.0, peak: 105.0}
+    # [출처: KPX 계통한계가격(SMP) 시간대별 전형값 (2024~2025)으로 근사]
+    # [참고] 수출 단가 < 수전 단가 (자가소비 우선 유인). 실제 정산은 상계/PPA 구조 의존.
+
+  tou_pattern: [off, off, off, off, off, off, off, off, off,
+                mid, peak, peak, mid, peak, peak, peak, peak, mid,
+                mid, mid, mid, mid, mid, off]
+  # 시간대(0~23시) → 부하구간. [출처: 한전 계절별 시간대 구분 (산업용, 2025)]
+  # [참고] 0~8시 경부하, 점심(12시) 중간, 10~16시 최대부하 중심 (하계 기준 단순화)
+
+  smp_noise_std: 0.05
+  # [-] Monte Carlo SMP(수출단가) 스케일 정규분포 σ [가정]
+  # [참고] 시나리오 간 가격 불확실성 표현. 일별 SMP 변동성 근사.
+
+  re_smp_drop_per_10pct: -5.0
+  # [원/kWh] 재생에너지 비중 10%p 증가당 SMP 변화 (민감도용)
+  # [출처: 11차 전기본·NDC 재생 확대 시 SMP 하락(merit-order effect) 정성 반영]
+  # [참고] make_korea_re_prices() 에서 정오(12.5시) 중심 가우시안으로 일중 분포 적용
+
+# ── D. 통화·물가 기준 (전 설비 공통) ───────────────────────────────────────────
+currency:
+  eur_to_krw: 1400              # [원/EUR] DEA 카탈로그(py2020 EUR) 환산율
+  usd_to_krw: 1350              # [원/USD] PV·ESS 일부 단가 환산율
+  money_year_dea: 2020          # DEA 비용 기준연도 (실질)
+  inflation_note: "2020→2025 EU 자본재 PPI +15~20% 미보정 — 보수 분석 시 capex ×1.15~1.20"
+  # [출처: Eurostat 자본재 생산자물가지수(PPI)]

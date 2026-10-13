@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 실행 산출물 (재생성 가능) — 원칙적으로 커밋하지 않는다.
+#   단 논문용 최종 그림과 결과 수치는 예외로 추적한다: CPLEX 없는 환경에서도 논문
+#   작업이 가능해야 하고, PC 를 옮길 때 그림이 유실되면 재생성 수단이 없기 때문이다.
+#   (배경: docs/HANDOFF.md)  추적 대상 = *.png / summary.json / 분석 *.csv
+#   추적 제외 = 로그(*.log), 엑셀(*.xlsx), 변수 덤프, config 복사본
+outputs/**
+!outputs/
+!outputs/*/
+!outputs/*/figs/
+!outputs/*/figs/*.png
+!outputs/*/figs/*.pdf
+!outputs/*/results/
+!outputs/*/results/summary.json
+!outputs/scenario_comparison/*.png
+!outputs/scenario_comparison/*.pdf
+!outputs/scenario_comparison/*.csv
+!outputs/penetration_sweep/*.png
+!outputs/penetration_sweep/*.csv
+!outputs/ess_diagnosis/*.csv
+!outputs/future_pathway_fixpv/*.png
+!outputs/future_pathway_fixpv/*.csv
+# future_pathway(자유 siting)는 2030·2035·2040 이 시간제한 미수렴이라 그림이 오해를
+# 부른다 → CSV 만 provenance 로 남기고 그림은 추적하지 않는다 (docs/RESULTS.md §2.7).
+!outputs/future_pathway/pathway.csv
+
+# 솔버/실행 로그 (재생성 가능)
+cplex.log
+*.log
+
+# 임시 진단 스크립트
+_diag*.py
+_status.html
+
+# OS
+Thumbs.db
+.DS_Store

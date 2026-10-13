@@ -1,0 +1,66 @@
+{
+  "status": "ok",
+  "objective": 59443240886.88833,
+  "invest_cost": 14231111654.538792,
+  "expected_op_cost": 28468839989.364014,
+  "cvar_op_cost": 33486578485.971073,
+  "pv_sites": {
+    "26": {
+      "cap_MWp": 0.3
+    },
+    "27": {
+      "cap_MWp": 1.0
+    },
+    "28": {
+      "cap_MWp": 1.0
+    },
+    "29": {
+      "cap_MWp": 1.0
+    }
+  },
+  "ess_sites": {},
+  "chp_sites": {
+    "6": {
+      "P_e_MW": 1.0,
+      "P_h_MW": 1.0106,
+      "P_boiler_MW": 0.0,
+      "E_tes_MWh": 2.7099
+    },
+    "7": {
+      "P_e_MW": 0.735,
+      "P_h_MW": 0.7428,
+      "P_boiler_MW": 0.0,
+      "E_tes_MWh": 5.8625
+    },
+    "23": {
+      "P_e_MW": 0.4778,
+      "P_h_MW": 0.4829,
+      "P_boiler_MW": 0.0,
+      "E_tes_MWh": 2.9491
+    }
+  },
+  "total_PV_MWp": 3.3,
+  "total_P_MW": 0,
+  "total_E_MWh": 0,
+  "total_CHP_MW": 2.2128,
+  "total_boiler_MW": 0.0,
+  "total_TES_MWh": 11.5215,
+  "n_tes_sites": 3,
+  "curtailment_pct": 0.0,
+  "rec_revenue_억": 39.95,
+  "n_ess_sites": 0,
+  "n_pv_sites": 4,
+  "n_chp_sites": 3,
+  "mode": "stochastic",
+  "dhn": {
+    "total_pipe_km": 5.1,
+    "invest_cost_억": 67.86,
+    "avg_pipe_flow_MW": {
+      "0": 0.7872,
+      "1": 1.0508,
+      "2": 0.9561,
+      "3": 0.6193,
+      "4": 0.459
+    }
+  }
+}

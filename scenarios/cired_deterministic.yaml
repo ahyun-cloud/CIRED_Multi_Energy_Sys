@@ -1,0 +1,11 @@
+# cired_deterministic.yaml — 결정론적 기준 (확률가중 평균 단일 시나리오)
+inherit: "base"
+
+scenario_name: "CIRED 결정론적"
+description: "PV-ESS-CHP-TES-DHN 결정론적 계획 (대표 24일 → 기대값 축약)"
+
+planning:
+  mode: deterministic
+
+scenarios:
+  type: representative_24

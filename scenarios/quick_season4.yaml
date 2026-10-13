@@ -1,0 +1,19 @@
+# quick_season4.yaml — 사계절 4시나리오 (빠른 결과 확인용)
+# 실행: python run_scenario.py --scenario quick_season4
+inherit: "base"
+
+scenario_name: "사계절 4시나리오 테스트"
+description: "봄(4월)·여름(7월)·가을(10월)·겨울(1월) 평일 대표 4개 시나리오 — 빠른 구조 검증용"
+
+planning:
+  mode: stochastic
+  alpha: 0.95
+  lambda_risk: 0.5
+
+scenarios:
+  type: season_4
+
+solver:
+  time_limit: 300          # [s] 5분 제한 (빠른 테스트)
+  mip_gap: 0.01            # 1% gap (탐색 조기 종료)
+  verbose: false

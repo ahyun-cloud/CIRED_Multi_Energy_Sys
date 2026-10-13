@@ -1,0 +1,21 @@
+# cired_stochastic.yaml — 확률론적 CVaR 기준 (Monte Carlo 100 시나리오)
+inherit: "base"
+
+scenario_name: "CIRED 확률론적 CVaR"
+description: "PV-ESS-CHP-TES-DHN 2단계 확률론적 CVaR 계획 (MC 100 시나리오)"
+
+planning:
+  mode: stochastic
+  alpha: 0.95
+  lambda_risk: 0.5
+  # MC100(444k변수) 직접 풀이는 미수렴 → tractable한 rep24의 siting을 고정하고
+  # 용량·운영만 100시나리오로 최적화(LP수준). siting은 rep24≈MC100(동일분포)이라 타당.
+  # ※ 먼저 'python run_scenario.py --scenario cired_rep24' 실행 필요(siting 소스).
+  siting_from: cired_rep24
+
+scenarios:
+  type: monte_carlo
+  n_scenarios: 100
+
+solver:
+  time_limit: 1800

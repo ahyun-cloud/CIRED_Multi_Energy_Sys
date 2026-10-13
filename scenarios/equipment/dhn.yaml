@@ -1,0 +1,95 @@
+# ── DHN(지역난방망) 설비 스펙 정의 ────────────────────────────────────────────
+# 적용 대상: IEEE 33-bus 위 합성(stylized) 지역난방 배관망 — CHP 6노드 방사형
+#
+# ★ 시험계통 성격 (중요):
+#   IEEE 33-bus는 순수 전기 배전 벤치마크로 대응하는 실제 열배관망이 없다.
+#   따라서 배관 토폴로지·길이·질량유량은 실측이 아닌 가정(stylized overlay)이며,
+#   온도는 KDHC 설계 전형값, 배관 단가·열손실·수명은 DEA 카탈로그에 정합한다.
+#   이는 전기-열 통합계획 연구의 일반적 관행이며, 재현성(공개 IEEE 33-bus)을 우선한 선택.
+#
+# 주요 출처:
+#   - 배관 단가·수명·열손실: 덴마크 에너지청(DEA) Technology Catalogue for
+#     "Transport of Energy", "3.2 DH_Distribution, Suburb" (single line 1–5MW, 2030)
+#   - 온도 수준: 한국지역난방공사(KDHC) 중온수 지역난방 설계 전형값
+#   - 토폴로지·길이·유량: 합성 가정 (network.py DHN_PIPE_DATA)
+#
+# 모델 매핑 (base.yaml → constraints/dhn.py / objective.py 소비 키):
+#   dhn.cp, dhn.m_dot_base, dhn.t_amb, dhn.t_sup_{min,max}, dhn.t_ret_{min,max},
+#   dhn.temp_loss_per_km, dhn.min_temp_diff, dhn.cost.{c_pipe,om_rate}
+#
+# 모델링 방식: 질량유량 고정 → 온도만 변수로 두는 선형 열에너지 모델 (Q = mcp·ΔT).
+#   열균형은 DHN 활성 시 네트워크 단위(배관 흐름 포함)로만 부과.
+#
+# 상세 가정·한계: docs/ASSUMPTIONS.md §2.3 참조
+# ──────────────────────────────────────────────────────────────────────────────
+
+dhn:
+  technology_type: "2nd_gen_medium_temp_water"
+  description: "중온수(70~120°C) 방사형 지역난방 배관망, 열원 간 열 공유용"
+
+  # ── 1. 열매체 물성 ─────────────────────────────────────────────────────────
+  cp: 4.182
+  # [kJ/(kg·°C)] 물 비열 (정압)
+  # [출처: 물리상수 (NIST, 25°C·1atm)]
+
+  # ── 2. 배관 설계 (수력) ────────────────────────────────────────────────────
+  m_dot_base: 10.0
+  # [kg/s] 배관 설계 질량유량 (고정) [가정]
+  # [근거] 배관 열용량 산정 기준: q_pipe_max = mcp·(T_sup_max - T_ret_min)
+  #   mcp = m_dot·cp = 10 × 4.182e-3 ≈ 0.0418 MW/°C → q_max ≈ 0.0418×80 ≈ 3.3 MW_th
+  # [한계] 유량 고정 → 압력손실·펌프동력·유량동특성 미반영 (선형 MILP 유지 목적)
+
+  # ── 3. 온도 (KDHC 중온수 지역난방 전형) ────────────────────────────────────
+  t_amb: 10.0
+  # [°C] 연평균 외기 (배관 열손실 기준온도)
+  # [출처: 기상청 전국 연평균 기온 전형값]
+
+  t_sup_min: 70.0
+  # [°C] 공급온도 하한
+  t_sup_max: 120.0
+  # [°C] 공급온도 상한
+  # [출처: KDHC 중온수 지역난방 공급온도 ~115~120°C (계절 변동)]
+
+  t_ret_min: 40.0
+  # [°C] 환수온도 하한
+  t_ret_max: 60.0
+  # [°C] 환수온도 상한
+  # [출처: KDHC 환수온도 ~40~65°C (수용가 열교환 후)]
+
+  min_temp_diff: 10.0
+  # [°C] 최소 공급-환수 온도차 (열교환 성능 확보) [가정/전형값]
+
+  # ── 4. 열손실 ──────────────────────────────────────────────────────────────
+  temp_loss_per_km: 0.02
+  # [/km] 무차원 공급온도 강하율 (stylized)
+  # [출처: DEA "Transport of Energy" 배전 DH 망손실 ~12.4%(suburb)에 정합하도록 설정]
+  # [모델] T_sup[to] = T_sup[from] - β·L·(T_sup[from] - T_amb), β = temp_loss_per_km
+  # [한계] 선형 열손실 근사 (절연 두께·매설심도·토양 열전도 미반영)
+
+  # ── 5. 비용 (money year 2020 EUR × 1,400원/EUR) ──────────────────────────
+  cost:
+    capex_eur_per_m: 818.9
+    # [€/m] [출처: DEA Transport "3.2 DH_Distribution Suburb" single line 1–5MW (2030)]
+    # [해석] "single line €/m" = 노선 단위(공급+환수 쌍 포함) 단가
+    #   → 모델에서 공급/환수 ×2 계수 제거 (이중계산 방지)
+    c_pipe: 1_146_000_000
+    # [원/km] = 818.9 €/m × 1,000 m/km × 1,400원/EUR ≈ 1.146e9
+    # [물가보정] 2020→2025 +18% 적용 시 ≈ 1.35e9 원/km. base.yaml은 미보정 유지.
+
+    lifetime_years: 45
+    # [출처: DEA Transport 배관 기술수명 45년]
+    # [가정] 계획기간 15년 ≪ 수명 45년 → full-capex 단순화(잔존가치 미반영, 보수적)
+
+    om_fixed_eur_per_mw_yr: 1000
+    # [€/MW/년] [출처: DEA Transport 고정 O&M 근사]
+    om_rate: 0.015
+    # [-/년] O&M (capex 대비 비율 근사)
+
+# ── 토폴로지 참고 (network.py DHN_PIPE_DATA, 전부 가정) ───────────────────────
+topology_note:
+  layout: "CHP 6노드(Bus 7,8,24,25,30,32) 방사형 합성 배관"
+  n_pipes: 5
+  total_length_km: 5.1
+  pipe_length_range_km: [0.3, 2.0]
+  # [가정] IEEE 33-bus에 열망 부재 → 합성. 배관 라우팅은 의사결정 아님(켜면 전량 건설, 매몰비).
+  # [향후] KDHC GIS 또는 실제 통합 전기-열 벤치마크로 대체 시 결론 강건성 보강 (docs/ASSUMPTIONS.md §6)

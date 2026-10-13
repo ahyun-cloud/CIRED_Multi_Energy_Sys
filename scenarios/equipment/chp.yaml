@@ -1,0 +1,167 @@
+# ── CHP·가스보일러·TES 설비 스펙 정의 ─────────────────────────────────────────
+# 적용 기술: 천연가스 엔진 열병합(CHP) + 응축식 가스보일러 + 대형 온수 축열조(TES)
+#            — 2030 운영 기준, 한국 배전·지역난방 연계 가정
+#
+# 주요 출처:
+#   - CHP:     덴마크 에너지청(DEA) Technology Catalogue for Generation of Electricity
+#              and District Heating, "06 Gas engines, natural gas" (2025 update, 2030 ctrl)
+#   - 보일러:  DEA Technology Catalogue "44 Natural Gas DH Only" (2025, 2030 ctrl)
+#   - TES:     DEA Technology Catalogue for Energy Storage,
+#              "141 Large hot water tank" (steel, 2025, 2030 ctrl)
+#   - 연료:    한국가스공사(KOGAS) 도시가스 도매요금 고시 (2025); 산업용 열병합 기준
+#
+# 통화·물가 기준:
+#   - DEA 카탈로그 비용은 money year 2020 EUR(실질) 기준.
+#   - 환율 1 EUR = 1,400원 적용 (2024~2025 평균 근사).
+#   - ★ 물가 미보정: 2020→2025 EU 자본재 인플레(Eurostat PPI 자본재 +15~20%) 미반영.
+#     보수적 분석 시 c_power 항에 ×1.15~1.20 보정 권장 (아래 각 항목 [물가보정] 주석 참조).
+#
+# 모델 매핑 (base.yaml → objective.py / constraints/chp.py 소비 키):
+#   chp.eta_elec, chp.eta_heat, chp.p_max_mw, chp.cost.{c_power,c_fixed,om_rate}
+#   boiler.eta, boiler.p_max_mw, boiler.cost.{c_power,om_rate}
+#   tes.efficiency, tes.soc_min, tes.soc_max, tes.{min,max}_duration_h, tes.cost.{c_energy,om_rate}
+#   market.gas_price
+#
+# 상세 가정·한계: docs/ASSUMPTIONS.md 참조
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── A. CHP (천연가스 엔진 열병합) ──────────────────────────────────────────────
+chp:
+  technology_type: "gas_engine"     # 왕복동 천연가스 엔진 (reciprocating gas engine)
+  description: "배전 노드 분산형 가스엔진 CHP (노드당 ≤1MW_e), 전기·열 동시 생산"
+
+  # ── 1. 효율 (net, annual average, 2030) ──────────────────────────────────
+  eta_elec: 0.47
+  # [출처: DEA "06 Gas engines, natural gas" — 전기효율(net) 2030 ctrl 값]
+  # [참고: 가스엔진 전기효율은 용량 의존 — <1MW_e: 0.40~0.43, 3~10MW_e: 0.45~0.48]
+  # [리뷰 대응] 본 모델은 노드당 ≤1MW_e 소형기 → 0.47은 대형기 수준의 낙관값.
+  #   보수적 분석 시 0.43~0.45 적용 권장. eta_elec는 민감도 분석 1순위 파라미터.
+  #   (운영비 가스투입 = p_chp_elec / eta_elec → 효율 과대평가 시 연료비 과소평가)
+
+  eta_heat: 0.475
+  # [출처: DEA "06 Gas engines" — 열효율(net). 배압비 Cb≈0.99 가정 시 η_h = η_e/Cb ≈ 0.475]
+  # [참고: 총효율 η_tot = η_e + η_h = 0.47 + 0.475 = 0.945 (가스엔진 전형 0.90~0.95)]
+
+  c_b: 0.99
+  # [-] 배압계수(backpressure coefficient) = η_elec / η_heat
+  # [참고: 열전비 α = η_heat/η_elec = 1/Cb ≈ 1.01 → constraints/chp.py 에서 자동 계산]
+  #   p_chp_heat = α · p_chp_elec (고정 열전비 가정; 가변 추기 미반영)
+
+  # ── 2. 용량·운전 ──────────────────────────────────────────────────────────
+  p_max_mw: 1.0
+  # [MW_e] 노드당 최대 전기출력 [가정]
+  # [근거] 배전 노드 열수요(전기부하×heat.ratio 0.8) 규모와 정합하도록 상한 설정.
+  #   실제 sizing은 모델이 cap_chp[n]으로 최적화 (0 ≤ cap_chp ≤ p_max_mw·inv_chp).
+
+  min_load_pct: 0.30
+  # [-] 최소 안정 부하율 [참고: DEA 가스엔진 최소부하 ~30%; 본 모델 미반영(연속 가정)]
+  # [한계] 부분부하 효율 저하·기동정지 비용 미모델링 — 24h 연속 운전 근사.
+
+  ramp_rate_pct_per_min: 0.20
+  # [-/min] 램프율 [참고: DEA 가스엔진 빠른 응동(분당 20%+); 1h 해상도 모델 미반영]
+
+  lifetime_years: 25
+  # [출처: DEA "06 Gas engines" 기술수명 25년]
+  # [가정] 계획기간 15년 < 수명 25년 → 잔존가치·교체 미반영(보수적).
+
+  # ── 3. 비용 (money year 2020 EUR × 1,400원/EUR) ──────────────────────────
+  cost:
+    capex_meur_per_mwe: 0.957
+    # [M€/MW_e] [출처: DEA "06 Gas engines" 투자비(2030 ctrl), 전기용량 기준]
+    c_power: 1_340_000_000
+    # [원/MW_e] = 0.957 M€/MW_e × 1,400원/EUR × 1e6
+    # [물가보정] 2020→2025 +18% 적용 시 ≈ 1.58e9 원/MW_e (보수). base.yaml은 미보정 유지.
+
+    c_fixed: 20_000_000
+    # [원/site] 사이트 고정비 (계통·가스 인입, 기초공사) [가정 — 카탈로그 미제공]
+    # [리뷰 대응] 약한 근거. 민감도(±50%) 또는 국내 분산형 CHP 실적 단가로 보강 권장.
+
+    om_fixed_eur_per_mwe_yr: 9889
+    # [€/MW_e/년] [출처: DEA "06 Gas engines" 고정 O&M]
+    om_rate: 0.010
+    # [-/년] 고정 O&M / capex ≈ 9,889 / (0.957e6) ≈ 1.0%/년 (CAPEX 대비 근사)
+
+    om_var_eur_per_mwh: 5.5
+    # [€/MWh_e] [출처: DEA 가변 O&M ~5~6 €/MWh; 본 모델 미반영(연료비에 집약)]
+
+# ── B. 가스보일러 (응축식, 지역난방 첨두/예비) ─────────────────────────────────
+boiler:
+  technology_type: "condensing_gas_boiler"
+  description: "DH 첨두·예비 열원용 응축식 천연가스 보일러"
+
+  eta: 1.04
+  # [-] 열효율 (net, annual avg; LHV 기준)
+  # [출처: DEA "44 Natural Gas DH Only" (2030 ctrl) — LHV 기준 응축식 > 1.0]
+  # [참고] LHV 기준 응축식 보일러는 배기 수증기 잠열 회수로 효율 >100% 표기 가능.
+  # [리뷰 대응] 응축 효과는 환수온도 의존. DH 환수 ≥60°C 시 응축 제한 → 실효율 0.95~1.0 하락 가능.
+  #   t_ret_max(60°C, base.yaml dhn) 운전 구간에서는 보수적으로 1.00 적용 검토 권장.
+
+  p_max_mw: 2.0
+  # [MW_th] 노드당 최대 열출력 [가정] (CHP 열출력 보완·첨두 대응 규모)
+
+  lifetime_years: 25
+  # [출처: DEA "44 Natural Gas DH Only" 기술수명]
+
+  cost:
+    capex_meur_per_mwth: 0.0532
+    # [M€/MW_th] [출처: DEA "44 Natural Gas DH Only" 투자비(2030 ctrl)]
+    c_power: 74_400_000
+    # [원/MW_th] = 0.0532 M€/MW_th × 1,400원/EUR × 1e6
+    # [물가보정] +18% 적용 시 ≈ 8.78e7 원/MW_th. base.yaml은 미보정 유지.
+
+    om_fixed_eur_per_mwth_yr: 2020
+    # [€/MW_th/년] [출처: DEA "44 Natural Gas DH Only" 고정 O&M]
+    om_rate: 0.038
+    # [-/년] 고정 O&M / capex ≈ 2,020 / (0.0532e6) ≈ 3.8%/년 (CAPEX 대비 근사)
+
+# ── C. TES (대형 온수 축열조) ──────────────────────────────────────────────────
+tes:
+  technology_type: "large_hot_water_tank_steel"
+  description: "DH 연계 대형 강재 온수 축열조 (일간 부하 이전·CHP 운전 유연성 확보)"
+
+  efficiency: 0.99
+  # [-] 단방향 충·방열 효율 (= √(round-trip ≈ 0.98))
+  # [출처: DEA "141 Large hot water tank" — 대형 축열조 왕복효율 ~98%]
+  # [리뷰 대응] 98%는 대형(수천 m³) DH 축열조 기준. 배전 노드급 소형 적용 시
+  #   표면적/체적비 증가로 열손실↑ → 보수적으로 round-trip 0.95(η≈0.975) 검토 권장.
+  # [한계] 정치손실(standing loss, 일 ~0.1~0.5%/일) 24h 모델에서 미반영.
+
+  soc_min: 0.10
+  # [-] SOC 하한 [가정 — 잔류 열·성층 유지 최소 수위]
+  soc_max: 0.90
+  # [-] SOC 상한 [가정 — 과열·압력 여유 확보]
+
+  min_duration_h: 2.0
+  # [h] 최소 지속시간 (E/P 하한) [가정: 단주기 부하 이전 최소 요건]
+  max_duration_h: 6.0
+  # [h] 최대 지속시간 (E/P 상한) [가정: 일간 축열 경제적 상한]
+
+  lifetime_years: 40
+  # [출처: DEA "141 Large hot water tank" 기술수명 (강재 탱크 장수명)]
+
+  cost:
+    capex_eur_per_mwh: 3036
+    # [€/MWh_th] [출처: DEA "141 Large hot water tank" (steel, 2030 ctrl) 에너지 용량당 투자비]
+    c_energy: 4_250_000
+    # [원/MWh_th] = 3,036 €/MWh × 1,400원/EUR
+    # [물가보정] +18% 적용 시 ≈ 5.02e6 원/MWh_th. base.yaml은 미보정 유지.
+    # [참고] 대형 DH 축열조 기준 단가. 소규모 노드 적용 시 규모의 경제 미달로 단가↑ 가능.
+
+    om_fixed_eur_per_mwh_yr: 8.8
+    # [€/MWh_th/년] [출처: DEA "141 Large hot water tank" 고정 O&M]
+    om_rate: 0.003
+    # [-/년] 고정 O&M / capex ≈ 8.8 / 3,036 ≈ 0.3%/년 (CAPEX 대비 근사)
+
+# ── D. 연료 (천연가스) ─────────────────────────────────────────────────────────
+# [모델 매핑] base.yaml market.gas_price 로 소비 (CHP·보일러 공통 연료단가)
+fuel:
+  gas_price: 80_000
+  # [원/MWh] 천연가스 열량단가 (LHV 기준)
+  # [출처: 한국가스공사 도시가스 도매요금 고시 (2025) — 산업용/열병합용 환산]
+  # [참고: 도시가스 ~원/MJ → ×3.6 MJ/kWh ×1000 환산; 계절·유종 연동 변동 ±15%]
+  # [리뷰 대응] 가스단가는 운영비 핵심 변수. SMP·가스가 동조 변동 → 민감도 분석 권장.
+
+  carbon_intensity_kg_per_mwh: 202
+  # [kgCO2/MWh_fuel(LHV)] 천연가스 연소 배출계수
+  # [출처: IPCC 2006 Guidelines / 온실가스 배출권거래제 배출계수 (천연가스 56.1 tCO2/TJ)]
+  # [참고] 탈탄소 분석 확장 시 사용. 현재 목적함수 미반영(비용 최소화만).

@@ -1,0 +1,23 @@
+# cired_rep24.yaml — 본 시나리오: 대표 24일(월별×요일) 확률론적 CVaR 계획
+# 실행: python run_scenario.py --scenario cired_rep24
+#   시나리오 사다리: season_4(4, 빠른검증) → rep24(24, 본) → MC100(cired_stochastic)
+inherit: "base"
+
+scenario_name: "CIRED 본 (대표24일 확률론적)"
+description: "PV-ESS-CHP-TES-DHN 2단계 확률론적 CVaR 계획 (대표 24일: 월별×평일/주말)"
+
+planning:
+  mode: stochastic
+  alpha: 0.95
+  lambda_risk: 0.5
+  # MIP warm-start: 결정론 해(빠르게 풀림)를 초기 incumbent 로 주입 → junk incumbent
+  #   갇힘 방지 + 수렴 가속. ※ 먼저 'cired_deterministic' 실행 필요(warm-start 소스).
+  warmstart_from: cired_deterministic
+
+scenarios:
+  type: representative_24      # 24개 대표일 (확률 = 연중 일수 비율)
+
+solver:
+  time_limit: 14400            # [s] 4h — 자유-siting MILP 진짜 수렴 시도(degeneracy 해소)
+  mip_gap: 0.005               # tight: 0.23(482억) vs 1.48(479억) 0.6%차를 가름
+  # parallel 미설정 = CPLEX 디폴트(opportunistic) → incumbent 탐색 빠름·build-all 회피

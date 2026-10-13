@@ -1,0 +1,3 @@
+﻿label,status,objective_억,delta_vs_base_억,invest_억,exp_op_억,cvar_억,ess_P_MW,ess_E_MWh,ess_nodes,chp_MW,tes_MWh,boiler_MW,curt_%,demand_charge_억,ess_deg_억,fr_net_억,import_억,export_억,cost_factor,dc_factor,scenario_set,fr_cap_price,fr_net_rate
+기준선(ESS 금지),optimal,594.4357,,142.3111,284.6916,334.8658,0,0,,2.2128,15.8892,0.0,-0.0,10.0948,0.0,0.0,59.5346,-0.8866,,,,,
+"F: FR 단가 11,000원/MW/h (순단가 -2,667)",optimal,594.4357,,142.3111,284.6916,334.8658,0,0,,2.2128,15.8893,0.0,0.0,10.0948,0.0,0.0,59.5346,-0.8866,,,,11000,-2666.75

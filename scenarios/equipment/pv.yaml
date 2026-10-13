@@ -1,0 +1,145 @@
+# ── PV 설비 스펙 정의 ──────────────────────────────────────────────────────────
+# 적용 기술: 단결정 실리콘 PERC (Mono-Si PERC) — 2025년 한국 배전 연계 기준
+# ──────────────────────────────────────────────────────────────────────────────
+
+technology_type: "mono_si_perc"    # 단결정 PERC (Passivated Emitter and Rear Contact)
+description: "옥상·지붕형 상업용 PV (100kWp~1MWp 설치 단위), 400W급 단결정 PERC"
+
+# ── 1. 패널 전기 스펙 (STC: 1000 W/m², AM1.5G, 25°C) ──────────────────────────
+panel:
+  p_stc_wp: 400
+  # [출처: 현대에너지솔루션 HiS-S400MG 제품 시방서 (2024)]
+  # [출처: 한화큐셀 Q.PEAK DUO G10+ 395-405W (2024) — Tier-1 동급]
+
+  eta_stc: 0.210
+  # [출처: 현대에너지솔루션 HiS-S400MG: 21.3%; 한화큐셀 Q.PEAK: 20.9%~21.4%]
+  # [출처: IEA PVPS Task 13 Report T13-20 (2021) — 단결정 Si 최신 상업 효율 범위: 20~22%]
+
+  voc_v: 48.5
+  isc_a: 10.5
+  # [출처: 현대에너지솔루션 HiS-S400MG 전기 특성표 (2024)]
+
+  temp_coeff_pmax: -0.0035
+  # [출처: 현대에너지솔루션 HiS-S400MG: -0.35%/°C]
+  # [참고: IEC 60904-10 시험 기준, 단결정 PERC 전형 범위 -0.34~-0.40%/°C]
+
+  temp_coeff_voc: -0.0025
+  # [출처: 현대에너지솔루션 HiS-S400MG: -0.25%/°C]
+
+  noct: 45.0
+  # [출처: IEC 61215-1:2021 NOCT 측정 조건 (800 W/m², 20°C 기온, 1 m/s 풍속)]
+  # [참고: 단결정 Si PERC 전형 범위 44~47°C]
+
+  cell_type: "PERC"
+  # [참고: PERC = Passivated Emitter and Rear Contact, 후면 패시베이션으로 효율 1~2%p 향상]
+
+# ── 2. 시스템 성능 ──────────────────────────────────────────────────────────────
+system:
+  dc_ac_ratio: 1.15
+  # [출처: NREL PVWatts v8 기본값 (2022) — 미국 상업용 지붕형 기준 1.1~1.2]
+  # [출처: 한국에너지공단 태양광 설계지침 (2023) — 국내 설계 관행 1.1~1.25]
+
+  inverter_efficiency: 0.975
+  # [출처: CEC (California Energy Commission) 공인 효율 데이터베이스 (2024)]
+  # [참고: SMA/Fronius/ABB string 인버터 CEC 가중 효율 97.0~97.8%]
+
+  performance_ratio: 0.86
+  # [출처: IEA PVPS Task 13 "Analysis of Long-Term Performance of PV Systems" T13-20 (2021)]
+  # [출처: 한국에너지공단 2024 태양광 보급실태 조사 — 국내 옥상형 PR 평균 0.83~0.88]
+  # 손실 구성 (합산 기준):
+  #   인버터 손실      2.5%  (η_inv = 97.5%)
+  #   배선·접속 손실   1.5%  (IEC 62446 설계 기준)
+  #   오염 손실        2.0%  (한국 도심, 분기 1회 청소 가정; Mani & Pillai, Sol.Energy 2010)
+  #   음영·미스매치    2.0%  (분산 배치, 소규모 부분 음영)
+  #   대기 손실        0.5%  (계통 연계 대기, KEPCO 배전 기준)
+  # → PR = 0.975 × 0.985 × 0.980 × 0.980 × 0.995 ≈ 0.921 × 0.995 ≈ 0.86
+  #
+  # ★ 모델 적용 주의: kpx_pv_wind_2024.csv 기반 pv_profile 은 실측 AC 출력을 정규화한 값.
+  #   PR은 데이터에 이미 내재 → 제약식에 중복 적용 금지.
+  #   (일사량 기반 이론 프로파일로 교체 시에만 PR을 제약식에 반영할 것)
+
+  degradation_rate: 0.005
+  # [출처: Jordan & Kurtz "Photovoltaic Degradation Rates — An Analytical Review"
+  #        Prog. Photovolt. 21(1), 2013 / NREL/TP-5200-51664]
+  # [출처: Jordan et al. "Robust PV Degradation Methodology and Application"
+  #        IEEE J. Photovolt. 8(2), 2018 — 단결정 Si 중앙값 0.5%/yr (LID 포함)]
+  # [참고: LID(광유도 열화) 첫해 0.5~1.5% → 이후 연간 0.4~0.6% 선형 감소 가정]
+  # 계획기간 평균 유효계수: deg_factor = (1-(1-d)^N)/(N·d)
+  #   N=15, d=0.005 → deg_factor ≈ 0.964  (pv.py에서 자동 계산)
+
+  lifetime_years: 25
+  # [출처: IEC 61215-1:2021 (설계 내구성 인증 기준)]
+  # [출처: IEA PVPS T1-38 (2024) — 상업 운영 중앙값 25~30년]
+
+  warranty_pct_at_25y: 0.80
+  # [출처: 한화큐셀/현대에너지솔루션 제품 보증서 (2024) — 25년 후 80% 보증]
+  # [참고: IEC 61215 가속 노화 시험 대응 보증 수준]
+
+# ── 3. 비용 구조 (2025년 기준, 100kWp~1MWp 규모) ──────────────────────────────
+cost:
+  # 항목별 CAPEX [원/kWp]
+  c_module_per_kwp: 350
+  # [출처: 한국태양광산업협회 2025 모듈 단가 동향 — Tier-1 국산 PERC 400W: 280~380원/Wp]
+  # [참고: IRENA "Renewable Power Generation Costs 2023" — 글로벌 결정질 Si 모듈 단가 하락 추세]
+
+  c_inverter_per_kwp: 90
+  # [출처: 산업통상자원부 신재생에너지 보급사업 기준단가 내역서 (2025)]
+  # [참고: Fronius Symo/SMA Tripower string 인버터 1MW급 국내 공급가 기준]
+
+  c_bos_per_kwp: 280
+  # [출처: 산업통상자원부 신재생에너지 보급사업 기준단가 (2025, 100kW~1MW)]
+  # 구성: 구조물(지붕형 앵커·알루미늄 레일) 150 + 전기공사(접속반·케이블·계량기) 130
+
+  c_epc_per_kwp: 200
+  # [출처: 한국에너지공단 소규모 태양광 표준도급계약 사례집 (2024)]
+  # 구성: 설계·인허가 50 + 감리 30 + 시공 80 + 시운전·준공검사 40
+
+  c_grid_conn_per_kwp: 80
+  # [출처: 한국전력공사 배전망 연계공사비 분담 기준 (2024)]
+  # [참고: 100kW~1MW 배전 연계: 한전 공사비 분담금 포함, 지역별 ±20% 편차]
+
+  # 합계: 350+90+280+200+80 = 1,000원/kWp = 1,000,000,000원/MWp
+  c_power_per_mwp: 1_000_000_000
+  # [출처: 산업통상자원부 2025 신재생에너지 보급사업 기준단가 (100kW~1MW 구간)]
+  # [참고: IEA PVPS T1-38 (2024) — 한국 C&I 규모 PV CAPEX 추정치와 정합]
+
+  c_fixed_per_site: 50_000_000
+  # [출처: 한국에너지공단 재생에너지 인허가 비용 실태조사 (2023)]
+  # 구성: 개발행위허가·환경영향(소규모) 30 + 측량·지질조사 20
+
+  om_per_kwp_yr: 13.5
+  # [원/kWp/년] = 10USD/kWp/yr × 1,350원/USD
+  # [출처: IEA PVPS Task 1 Report T1-38 "Trends 2024 in Photovoltaic Applications"]
+  # [출처: IRENA "Renewable Power Generation Costs 2023" — 글로벌 utility PV O&M: 7~12 USD/kWp/yr]
+  # [참고: 한국에너지공단 2023 태양광 O&M 실태조사 — 국내 소규모 12~18원/kWp/yr]
+  # 구성: 모니터링 2.5 + 청소(분기 1회) 3.0 + 보험료 4.0 + 정기점검·부품교체 4.0
+
+  om_rate: 0.0135
+  # = 13.5원/kWp·yr / 1,000원/kWp (om_per_kwp_yr / c_power_per_kwp)
+  # [참고: NREL "Operations and Maintenance Costs for Utility-Scale PV" (2022): 1~1.5%/yr]
+
+# ── 4. 인버터 규격 (그리드 연계) ──────────────────────────────────────────────
+inverter:
+  pf_min: 0.95
+  # [출처: IEEE Std 1547-2018 § 8.3.4 "Default Settings for Reactive Power Functions"]
+  # [출처: 한국전력공사 분산형전원 배전계통 연계 기술기준 (2024) — 역률 0.95 이상 유지]
+
+  reactive_power_mode: "volt_var"
+  # [출처: IEEE Std 1547-2018 § 8.3.2 "Volt-Var Function" (기본 활성 모드)]
+  # [참고: 한전 스마트인버터 인증 기준 (2023) — volt-var 드룹 특성 의무화]
+
+  overload_factor: 1.10
+  # [출처: UL 1741 SA (Supplement A) § 5.3 — 10분 이내 110% 과부하 허용]
+  # [출처: IEC 62109-1 Safety Class II 인버터 기준]
+
+  grid_code: "KEPCO_2024"
+  # [출처: 한국전력공사 분산형전원 배전계통 연계 기술기준 (KEC 제508절, 2024 개정)]
+
+# ── 5. 설치 제약 (IEEE 33-bus 노드 가정) ─────────────────────────────────────
+installation:
+  power_density_w_per_m2: 150
+  # [출처: NREL "Best Practices in PV System Operations and Maintenance" (2023)]
+  # [참고: 지붕형 구조물 이격 포함 전형값 130~170 W/m²; 단결정 20% 효율 기준]
+  # [가정] IEEE 33-bus 노드별 설치 가용 면적 데이터 없음 → cap_max_mwp으로 일괄 제한
+  cap_min_mwp: 0.1    # base.yaml pv.cap_min_mwp 과 동기화
+  cap_max_mwp: 1.0    # base.yaml pv.cap_max_mwp 과 동기화

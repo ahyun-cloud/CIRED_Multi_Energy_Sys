@@ -1,0 +1,8 @@
+# PV-ESS-CHP-TES-DHN 다중에너지 계획 모델 의존성
+pyomo>=6.6
+numpy>=1.24
+pandas>=2.0
+pyyaml>=6.0
+matplotlib>=3.7
+openpyxl>=3.1
+# MILP solver: CPLEX (cplex) 또는 Gurobi (gurobi) 별도 설치 필요
