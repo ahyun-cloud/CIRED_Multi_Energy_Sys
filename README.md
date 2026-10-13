@@ -26,6 +26,8 @@ figures/                      저장된 결과로 그림만 재생성 (재풀이
   make_det_vs_stoch_fig.py    Fig. 5 결정론 vs 확률론
   make_sensitivity_figs.py    λ·α 민감도 그림·포스터 그림
   make_flow_figs.py           연간 에너지 흐름(Sankey)·시간별 운전 그림
+  make_network_fig.py         전기·열 2층 배치도 (논문 Fig. 3 / 포스터 Fig. 1)
+  make_flowchart.py           방법론 흐름도 (논문 Fig. 1, 모델 결과 불필요)
 
 src/
   data_process/   데이터 로딩, 33-bus/DHN 네트워크, 시나리오 생성(rep24·MC)

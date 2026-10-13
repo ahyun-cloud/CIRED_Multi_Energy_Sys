@@ -1,7 +1,8 @@
 """plot_network_layered.py - 2-layer electricity-heat integrated system schematic.
 
-레퍼런스(HE-IES) 스타일 개념도. 전기(하단)·열(상단) 모두 **동일한 IEEE 33-bus 토폴로지**로
-그리고(열 배전망을 전기와 대칭 표현), 설비가 설치된 노드는 **채워진 원(●)**, 그 외는 작은 점.
+레퍼런스(HE-IES) 스타일 개념도. 하단은 IEEE 33-bus 전력망, 상단은 **모델에 실제로 들어간
+DHN**(6노드·5배관, DHN_PIPE_DATA)만 그린다. 설비가 설치된 노드는 **채워진 원(●)**,
+열 후보 노드 중 미설치는 빈 원(○).
 층 사이 gap 에 변환·저장 설비(CHP / Gas boiler / TES) chip 을 두고 가스·전기·열 벡터 화살표로 연결.
 
 물리 정합: 전기↔열 결합은 CHP(가스→전기+열). Gas boiler=열전용, TES=열저장.
@@ -19,7 +20,7 @@ from matplotlib.patches import Polygon, Circle, FancyArrowPatch, FancyBboxPatch
 import numpy as np
 
 from src.data_process.network import (
-    LINE_DATA, NUM_NODES, SLACK_BUS, CHP_CANDIDATE_NODES,
+    LINE_DATA, NUM_NODES, SLACK_BUS, CHP_CANDIDATE_NODES, DHN_PIPE_DATA,
 )
 from src.fig_makers.plot_network import _layout_from_edges
 
@@ -106,6 +107,30 @@ def _network(ax, pos, adj, z, line_color, installed, fill_color):
                                 lw=1.1, zorder=zb + 5))
 
 
+# DHN 노드 라벨 위치 (0-indexed 노드 → (dx, dy, ha, va)). Bus 7·8·24·25 가 붙어 있어 수동 배치.
+_DHN_NODE_LBL = {6: (-0.32, 0.0, "right", "center"), 7: (0.30, -0.30, "left", "top"),
+                 23: (-0.30, 0.30, "right", "bottom"), 24: (0.10, 0.34, "left", "bottom"),
+                 29: (0.0, -0.36, "center", "top"), 31: (0.0, -0.36, "center", "top")}
+
+
+def _dhn(ax, pos, z, installed):
+    """열 평면에 실제 DHN 배관(DHN_PIPE_DATA)과 노드만 그린다. 노드 라벨은 1-indexed Bus 번호."""
+    zb = z * 10
+    for i, j, _km in DHN_PIPE_DATA:   # 구간 길이는 좁아서 생략, 총연장은 층 라벨에 표기
+        i, j = int(i), int(j)
+        p1, p2 = _iso(*pos[i], z), _iso(*pos[j], z)
+        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color=_HEAT, lw=3.0,
+                zorder=zb + 2, solid_capstyle="round")
+    for n in CHP_CANDIDATE_NODES:
+        sx, sy = _iso(*pos[n], z)
+        filled = n in installed
+        ax.add_patch(Circle((sx, sy), 0.22, fc=_HEAT if filled else "white",
+                            ec=_HEAT, lw=1.8, zorder=zb + 5))
+        dx, dy, ha, va = _DHN_NODE_LBL.get(n, (0.0, -0.36, "center", "top"))
+        ax.text(sx + dx, sy + dy, f"Bus {n + 1}", fontsize=8.5, color=_INK,
+                ha=ha, va=va, zorder=zb + 7)
+
+
 def _chip(ax, cx, cy, w, h, label, ec):
     ax.add_patch(FancyBboxPatch((cx - w / 2, cy - h / 2), w, h,
                  boxstyle="round,pad=0.02,rounding_size=0.14",
@@ -121,7 +146,7 @@ def _arrow(ax, p0, p1, color, both=False, lw=1.7, z=450):
 
 
 def plot_network_layered(results, out_path,
-                         title="Integrated electricity–heat energy system"):
+                         title="Integrated electricity–heat energy system", dpi=160):
     results = results or {}
     pos, _, _ = _layout_from_edges()
     xs = [pos[n][0] for n in pos]
@@ -138,14 +163,15 @@ def plot_network_layered(results, out_path,
         # planes
         hx0, hx1, hy0, hy1 = _plane(ax, xs, ys, _ZGAP, _HEAT_FILL, _HEAT)
         ex0, ex1, ey0, ey1 = _plane(ax, xs, ys, 0.0, _ELEC_FILL, _ELEC)
-        # 33-bus on both layers (각 버스 bus-bar 표시)
+        # 하단: 33-bus 전력망 / 상단: 실제 DHN(6노드·5배관)
         adj = _adjacency()
-        _network(ax, pos, adj, _ZGAP, _HEAT, h_inst, _HEAT)
+        _dhn(ax, pos, _ZGAP, h_inst)
         _network(ax, pos, adj, 0.0, _ELEC, e_inst, _ELEC)
 
         # layer labels (left, outside plane, along tilt)
         for (x0, y0, z, txt, clr) in [
-                (hx0, hy0, _ZGAP, "District heating network (IEEE 33-bus)", _HEAT),
+                (hx0, hy0, _ZGAP, f"District heating network ({len(CHP_CANDIDATE_NODES)} nodes, "
+                 f"{DHN_PIPE_DATA[:, 2].sum():.1f} km)", _HEAT),
                 (ex0, ey0, 0.0, "Electric power system (IEEE 33-bus)", _ELEC)]:
             lx, ly = _iso(x0, y0, z)
             ax.text(lx - 0.35, ly - 0.2, txt, fontsize=12, fontweight="bold",
@@ -185,7 +211,9 @@ def plot_network_layered(results, out_path,
         # legend (reserved lower-right, outside planes)
         handles = [
             plt.Line2D([], [], marker="o", ls="", markersize=10, markerfacecolor=_HEAT,
-                       markeredgecolor="white", label="Heat resource node"),
+                       markeredgecolor="white", label="Heat source (CHP/TES installed)"),
+            plt.Line2D([], [], marker="o", ls="", markersize=10, markerfacecolor="white",
+                       markeredgecolor=_HEAT, label="DHN node (heat demand)"),
             plt.Line2D([], [], marker="o", ls="", markersize=10, markerfacecolor=_ELEC,
                        markeredgecolor="white", label="Electric resource node"),
             plt.Line2D([], [], color=_ELEC, lw=2.4, label="Electricity"),
@@ -209,6 +237,6 @@ def plot_network_layered(results, out_path,
 
         ax.set_aspect("equal")
         ax.axis("off")
-        fig.savefig(out_path, dpi=160, bbox_inches="tight", facecolor="white")
+        fig.savefig(out_path, dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close(fig)
     return out_path

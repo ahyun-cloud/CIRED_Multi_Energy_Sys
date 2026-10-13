@@ -11,15 +11,24 @@ import numpy as np
 def plot_det_vs_stoch(r_det: dict, r_sto: dict, out_path, title=""):
     """결정론 vs 확률론 비교: (좌) 설비용량  (우) 비용 분해.
     단위가 다른 용량(MW/MWh)과 비용(억원)을 패널로 분리해 가독성 확보."""
+    # 결정론은 시나리오가 1개라 CVaR 가 정의되지 않는다(그 값은 단일 시나리오 운영비).
+    # 막대를 그리면 "위험회피 계획의 꼬리비용이 더 크다"로 거꾸로 읽히므로 생략하고 n/a 표기.
+    det_na = {"cvar_op_cost"}
+
     def _grouped(ax, metrics, ylabel, ptitle):
         labels = [m[0] for m in metrics]
-        det = [(r_det.get(k, 0) or 0) * sc for _, k, sc in metrics]
+        det = [None if k in det_na else (r_det.get(k, 0) or 0) * sc for _, k, sc in metrics]
         sto = [(r_sto.get(k, 0) or 0) * sc for _, k, sc in metrics]
         x = np.arange(len(labels))
-        ax.bar(x - 0.2, det, 0.4, label="Deterministic", color="gray")
+        ax.bar(x - 0.2, [0 if d is None else d for d in det], 0.4,
+               label="Deterministic", color="gray")
         ax.bar(x + 0.2, sto, 0.4, label="Stochastic (CVaR)", color="steelblue")
         for i, (d, s) in enumerate(zip(det, sto)):
-            ax.annotate(f"{d:.2f}", (x[i] - 0.2, d), ha="center", va="bottom", fontsize=8)
+            if d is None:
+                ax.annotate("n/a", (x[i] - 0.2, 0), ha="center", va="bottom",
+                            fontsize=8, color="gray")
+            else:
+                ax.annotate(f"{d:.2f}", (x[i] - 0.2, d), ha="center", va="bottom", fontsize=8)
             ax.annotate(f"{s:.2f}", (x[i] + 0.2, s), ha="center", va="bottom", fontsize=8)
         ax.set_xticks(x)
         ax.set_xticklabels(labels, fontsize=9)
